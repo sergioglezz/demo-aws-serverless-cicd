@@ -11,10 +11,6 @@
     "ENDPOINT_OVERRIDE": "http://dynamodb:8000",
     "DYNAMODB_TABLE": "local-TodosDynamoDbTable"
   },
-  "TranslateTodoFunction": {
-    "ENDPOINT_OVERRIDE": "http://dynamodb:8000",
-    "DYNAMODB_TABLE": "local-TodosDynamoDbTable"
-  },
   "UpdateTodoFunction": {
     "ENDPOINT_OVERRIDE": "http://dynamodb:8000",
     "DYNAMODB_TABLE": "local-TodosDynamoDbTable"
