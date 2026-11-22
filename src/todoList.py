@@ -1,148 +1,112 @@
+"""Capa de acceso a datos: operaciones CRUD de tareas sobre DynamoDB."""
 import os
-import boto3
-import time
 import uuid
-import json
-import functools
+from datetime import datetime, timezone
+
+import boto3
 from botocore.exceptions import ClientError
 
 
+class TodoNotFoundError(Exception):
+    """La tarea solicitada no existe."""
+
+
 def get_table(dynamodb=None):
-    if not dynamodb:
-        URL = os.environ['ENDPOINT_OVERRIDE']
-        if URL:
-            print('URL dynamoDB:'+URL)
-            boto3.client = functools.partial(boto3.client, endpoint_url=URL)
-            boto3.resource = functools.partial(boto3.resource,
-                                               endpoint_url=URL)
-        dynamodb = boto3.resource("dynamodb")
-    # fetch todo from the database
-    table = dynamodb.Table(os.environ['DYNAMODB_TABLE'])
-    return table
+    """Devuelve la tabla indicada en la variable DYNAMODB_TABLE.
+
+    ENDPOINT_OVERRIDE permite apuntar a DynamoDB Local durante el desarrollo.
+    """
+    if dynamodb is None:
+        endpoint_url = os.environ.get("ENDPOINT_OVERRIDE") or None
+        dynamodb = boto3.resource("dynamodb", endpoint_url=endpoint_url)
+    return dynamodb.Table(os.environ["DYNAMODB_TABLE"])
+
+
+def _now():
+    """Fecha y hora actual en UTC, formato ISO 8601."""
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _is_missing(error):
+    """Indica si el error se debe a que no se cumplió attribute_exists."""
+    return (error.response["Error"]["Code"]
+            == "ConditionalCheckFailedException")
 
 
 def get_item(key, dynamodb=None):
-    table = get_table(dynamodb)
-    try:
-        result = table.get_item(
-            Key={
-                'id': key
-            }
-        )
-
-    except ClientError as e:
-        print(e.response['Error']['Message'])
-    else:
-        print('Result getItem:'+str(result))
-        if 'Item' in result:
-            return result['Item']
+    """Devuelve la tarea con ese id, o None si no existe."""
+    result = get_table(dynamodb).get_item(Key={"id": key})
+    return result.get("Item")
 
 
 def get_items(dynamodb=None):
+    """Devuelve todas las tareas.
+
+    Un scan de DynamoDB devuelve como máximo 1 MB por llamada, así que se
+    recorren todas las páginas.
+    """
     table = get_table(dynamodb)
-    # fetch todo from the database
-    result = table.scan()
-    return result['Items']
+    response = table.scan()
+    items = response.get("Items", [])
+    while "LastEvaluatedKey" in response:
+        response = table.scan(ExclusiveStartKey=response["LastEvaluatedKey"])
+        items.extend(response.get("Items", []))
+    return items
 
 
 def put_item(text, dynamodb=None):
-    table = get_table(dynamodb)
-    timestamp = str(time.time())
-    print('Table name:' + table.name)
+    """Crea una tarea nueva y la devuelve."""
+    timestamp = _now()
     item = {
-        'id': str(uuid.uuid1()),
-        'text': text,
-        'checked': False,
-        'createdAt': timestamp,
-        'updatedAt': timestamp,
+        # uuid4 es aleatorio; uuid1 incluía la MAC del servidor y la hora
+        "id": str(uuid.uuid4()),
+        "text": text,
+        "checked": False,
+        "createdAt": timestamp,
+        "updatedAt": timestamp,
     }
-    try:
-        # write the todo to the database
-        table.put_item(Item=item)
-        # create a response
-        response = {
-            "statusCode": 200,
-            "body": json.dumps(item)
-        }
-
-    except ClientError as e:
-        print(e.response['Error']['Message'])
-    else:
-        return response
+    get_table(dynamodb).put_item(Item=item)
+    return item
 
 
 def update_item(key, text, checked, dynamodb=None):
-    table = get_table(dynamodb)
-    timestamp = int(time.time() * 1000)
-    # update the todo in the database
-    try:
-        result = table.update_item(
-            Key={
-                'id': key
-            },
-            ExpressionAttributeNames={
-              '#todo_text': 'text',
-            },
-            ExpressionAttributeValues={
-              ':text': text,
-              ':checked': checked,
-              ':updatedAt': timestamp,
-            },
-            UpdateExpression='SET #todo_text = :text, '
-                             'checked = :checked, '
-                             'updatedAt = :updatedAt',
-            ReturnValues='ALL_NEW',
-        )
+    """Actualiza una tarea existente y devuelve su nuevo estado.
 
-    except ClientError as e:
-        print(e.response['Error']['Message'])
-    else:
-        return result['Attributes']
+    Lanza TodoNotFoundError si la tarea no existe (sin la condición,
+    DynamoDB crearía una tarea nueva con ese id).
+    """
+    try:
+        result = get_table(dynamodb).update_item(
+            Key={"id": key},
+            ConditionExpression="attribute_exists(#id)",
+            UpdateExpression=(
+                "SET #text = :text, checked = :checked, "
+                "updatedAt = :updatedAt"
+            ),
+            ExpressionAttributeNames={"#id": "id", "#text": "text"},
+            ExpressionAttributeValues={
+                ":text": text,
+                ":checked": checked,
+                ":updatedAt": _now(),
+            },
+            ReturnValues="ALL_NEW",
+        )
+    except ClientError as error:
+        if _is_missing(error):
+            raise TodoNotFoundError(key) from error
+        raise
+    return result["Attributes"]
 
 
 def delete_item(key, dynamodb=None):
-    table = get_table(dynamodb)
-    # delete the todo from the database
+    """Borra una tarea. Lanza TodoNotFoundError si no existe."""
     try:
-        table.delete_item(
-            Key={
-                'id': key
-            }
+        get_table(dynamodb).delete_item(
+            Key={"id": key},
+            ConditionExpression="attribute_exists(#id)",
+            ExpressionAttributeNames={"#id": "id"},
         )
-
-    except ClientError as e:
-        print(e.response['Error']['Message'])
-    else:
-        return
-
-
-def create_todo_table(dynamodb):
-    # For unit testing
-    tableName = os.environ['DYNAMODB_TABLE']
-    print('Creating Table with name:' + tableName)
-    table = dynamodb.create_table(
-        TableName=tableName,
-        KeySchema=[
-            {
-                'AttributeName': 'id',
-                'KeyType': 'HASH'
-            }
-        ],
-        AttributeDefinitions=[
-            {
-                'AttributeName': 'id',
-                'AttributeType': 'S'
-            }
-        ],
-        ProvisionedThroughput={
-            'ReadCapacityUnits': 1,
-            'WriteCapacityUnits': 1
-        }
-    )
-
-    # Wait until the table exists.
-    table.meta.client.get_waiter('table_exists').wait(TableName=tableName)
-    if (table.table_status != 'ACTIVE'):
-        raise AssertionError()
-
-    return table
+    except ClientError as error:
+        if _is_missing(error):
+            raise TodoNotFoundError(key) from error
+        raise

@@ -1,0 +1,58 @@
+# Integración continua: análisis estático, seguridad y tests unitarios en cada
+# push y pull request. No despliega nada ni necesita credenciales de AWS
+# (el despliegue lo hacen los pipelines de Jenkins).
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  calidad:
+    name: Lint y seguridad
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Estilo (flake8)
+        run: flake8 src test
+
+      - name: Análisis de seguridad del código (bandit)
+        run: bandit -r src
+
+      - name: Vulnerabilidades en dependencias (pip-audit)
+        run: pip-audit -r src/requirements.txt
+
+      - name: Validar plantilla SAM (cfn-lint)
+        run: cfn-lint template.yaml
+
+  tests:
+    name: Tests unitarios
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Ejecutar tests con cobertura
+        run: |
+          coverage run --source=src -m pytest -v
+          coverage report --show-missing --fail-under=90
