@@ -6,7 +6,7 @@ pipeline {
         stage('Get Code') {
             agent any
             steps {
-                git branch: 'develop', url: 'https://github.com/sergioglezz/CasoPractico1-4.git'
+                git branch: 'develop', url: 'https://github.com/sergioglezz/demo-aws-serverless-cicd.git'
                 echo WORKSPACE
                 
                 dir('config-temp') {
@@ -95,16 +95,16 @@ pipeline {
                 unstash 'test-results'
                 junit 'result-rest.xml'
                 
-                withCredentials([usernamePassword(
+                // gitUsernamePassword entrega el token a git mediante GIT_ASKPASS:
+                // no se escribe en la URL del remoto, en .git/config ni en los logs
+                withCredentials([gitUsernamePassword(
                     credentialsId: 'github-credentials',
-                    usernameVariable: 'GIT_USER',
-                    passwordVariable: 'GIT_TOKEN'
+                    gitToolName: 'Default'
                 )]) {
                     sh '''
                         git config user.email "jenkins@devops.com"
                         git config user.name "Jenkins CI"
-                        git remote set-url origin https://${GIT_USER}:${GIT_TOKEN}@github.com/sergioglezz/CasoPractico1-3.git
-                        
+
                         rm -f samconfig.toml
                         rm -f api_url.txt
 
