@@ -1,3 +1,4 @@
-requests
-urllib3==1.26.6
+# Dependencias de las funciones Lambda (las empaqueta "sam build").
+# boto3 ya viene incluido en el runtime de Python de Lambda; se declara para
+# usar la misma librería en local y en los tests.
 boto3
