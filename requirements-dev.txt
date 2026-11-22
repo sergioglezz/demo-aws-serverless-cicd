@@ -1,0 +1,11 @@
+# Dependencias para desarrollo, tests y análisis (no se despliegan en Lambda)
+#   python -m pip install -r requirements-dev.txt
+-r src/requirements.txt
+pytest>=8
+coverage>=7
+moto[dynamodb]>=5
+requests>=2.32
+flake8>=7
+bandit>=1.7
+cfn-lint>=1
+pip-audit>=2.7
