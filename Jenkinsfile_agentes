@@ -6,7 +6,7 @@ pipeline {
         stage('Get Code') {
             agent any
             steps {
-                git branch: 'master', url: 'https://github.com/sergioglezz/CasoPractico1-4.git'
+                git branch: 'master', url: 'https://github.com/sergioglezz/demo-aws-serverless-cicd.git'
                 echo WORKSPACE
                 
                 dir('config-temp') {
@@ -16,9 +16,9 @@ pipeline {
                 sh '''
                     cp config-temp/samconfig.toml .
                     rm -rf config-temp
-                    
+                    # No se imprime samconfig.toml: los logs de Jenkins no deben
+                    # mostrar la configuración de despliegue (bucket, cuenta...)
                     echo "=== Configuración de production descargada ==="
-                    cat samconfig.toml
                 '''
                 
                 sh 'ls -la'

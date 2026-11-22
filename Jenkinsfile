@@ -5,7 +5,7 @@ pipeline {
 
         stage('Get Code') {
             steps {
-                git branch: 'develop', url: 'https://github.com/sergioglezz/CasoPractico1-4.git'
+                git branch: 'master', url: 'https://github.com/sergioglezz/demo-aws-serverless-cicd.git'
                 echo WORKSPACE
                 
                 dir('config-temp') {
