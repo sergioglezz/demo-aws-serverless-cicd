@@ -1,17 +1,9 @@
-import json
-import logging
 import todoList
+from api_utils import api_handler, parse_body, response, validate_text
 
 
+@api_handler
 def create(event, context):
-    data = json.loads(event['body'])
-    if 'text' not in data:
-        logging.error("Validation failed")
-        raise Exception("Couldn't create the todo item.")
-    item = todoList.put_item(data['text'])
-    # create a response
-    response = {
-        "statusCode": 200,
-        "body": json.dumps(item)
-    }
-    return response
+    """POST /todos: crea una tarea."""
+    text = validate_text(parse_body(event))
+    return response(201, todoList.put_item(text))
